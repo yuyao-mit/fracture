@@ -1,0 +1,12 @@
+
+完成：
+Transformer: patchtst, autoformer, informer
+CNN: convlstm, tcn, simvp
+RNN: predrnn, trajgru, mim
+GNN: stgcn, agcrn, gwnet
+Neural Operator: fno, uno, codano
+
+notes:
+
+predrnn: 删除scheduled sampling
+

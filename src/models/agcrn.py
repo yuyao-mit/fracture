@@ -2,10 +2,8 @@
 # https://arxiv.org/abs/2007.02842
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
-from einops import rearrange, repeat
-from typing import Optional, Tuple
+import torch.nn as nn
 
 class AVWGCN(nn.Module):
     def __init__(self, dim_in, dim_out, cheb_k, embed_dim):
@@ -13,19 +11,21 @@ class AVWGCN(nn.Module):
         self.cheb_k = cheb_k
         self.weights_pool = nn.Parameter(torch.FloatTensor(embed_dim, cheb_k, dim_in, dim_out))
         self.bias_pool = nn.Parameter(torch.FloatTensor(embed_dim, dim_out))
-    
     def forward(self, x, node_embeddings):
+        #x shaped[B, N, C], node_embeddings shaped [N, D] -> supports shaped [N, N]
+        #output shape [B, N, C]
         node_num = node_embeddings.shape[0]
         supports = F.softmax(F.relu(torch.mm(node_embeddings, node_embeddings.transpose(0, 1))), dim=1)
         support_set = [torch.eye(node_num).to(supports.device), supports]
+        #default cheb_k = 3
         for k in range(2, self.cheb_k):
             support_set.append(torch.matmul(2 * supports, support_set[-1]) - support_set[-2])
         supports = torch.stack(support_set, dim=0)
-        weights = torch.einsum('nd,dkio->nkio', node_embeddings, self.weights_pool)
-        bias = torch.matmul(node_embeddings, self.bias_pool)
-        x_g = torch.einsum("knm,bmc->bknc", supports, x)
-        x_g = x_g.permute(0, 2, 1, 3)
-        x_gconv = torch.einsum('bnki,nkio->bno', x_g, weights) + bias
+        weights = torch.einsum('nd,dkio->nkio', node_embeddings, self.weights_pool)  #N, cheb_k, dim_in, dim_out
+        bias = torch.matmul(node_embeddings, self.bias_pool)                       #N, dim_out
+        x_g = torch.einsum("knm,bmc->bknc", supports, x)      #B, cheb_k, N, dim_in
+        x_g = x_g.permute(0, 2, 1, 3)  # B, N, cheb_k, dim_in
+        x_gconv = torch.einsum('bnki,nkio->bno', x_g, weights) + bias     #b, N, dim_out
         return x_gconv
 
 class AGCRNCell(nn.Module):
@@ -37,6 +37,8 @@ class AGCRNCell(nn.Module):
         self.update = AVWGCN(dim_in+self.hidden_dim, dim_out, cheb_k, embed_dim)
 
     def forward(self, x, state, node_embeddings):
+        #x: B, num_nodes, input_dim
+        #state: B, num_nodes, hidden_dim
         state = state.to(x.device)
         input_and_state = torch.cat((x, state), dim=-1)
         z_r = torch.sigmoid(self.gate(input_and_state, node_embeddings))
@@ -62,6 +64,8 @@ class AVWDCRNN(nn.Module):
             self.dcrnn_cells.append(AGCRNCell(node_num, dim_out, dim_out, cheb_k, embed_dim))
 
     def forward(self, x, init_state, node_embeddings):
+        #shape of x: (B, T, N, D)
+        #shape of init_state: (num_layers, B, N, hidden_dim)
         assert x.shape[2] == self.node_num and x.shape[3] == self.input_dim
         seq_length = x.shape[1]
         current_inputs = x
@@ -74,125 +78,71 @@ class AVWDCRNN(nn.Module):
                 inner_states.append(state)
             output_hidden.append(state)
             current_inputs = torch.stack(inner_states, dim=1)
+        #current_inputs: the outputs of last layer: (B, T, N, hidden_dim)
+        #output_hidden: the last state for each layer: (num_layers, B, N, hidden_dim)
+        #last_state: (B, N, hidden_dim)
         return current_inputs, output_hidden
 
     def init_hidden(self, batch_size):
         init_states = []
         for i in range(self.num_layers):
             init_states.append(self.dcrnn_cells[i].init_hidden_state(batch_size))
-        return torch.stack(init_states, dim=0)
+        return torch.stack(init_states, dim=0)      #(num_layers, B, N, hidden_dim)
 
 class AGCRN(nn.Module):
-    def __init__(self, num_nodes, input_dim, hidden_dim, output_dim, horizon, 
-                 num_layers, cheb_k, embed_dim):
+    def __init__(self, input_shape, output_shape):
         super(AGCRN, self).__init__()
-        self.num_node = num_nodes
-        self.input_dim = input_dim
-        self.hidden_dim = hidden_dim
-        self.output_dim = output_dim
-        self.horizon = horizon
-        self.num_layers = num_layers
 
-        self.node_embeddings = nn.Parameter(torch.randn(self.num_node, embed_dim), requires_grad=True)
-        self.encoder = AVWDCRNN(num_nodes, input_dim, hidden_dim, cheb_k, embed_dim, num_layers)
-        self.end_conv = nn.Conv2d(1, horizon * self.output_dim, kernel_size=(1, self.hidden_dim), bias=True)
+        B, T_in, C_in, H, W = input_shape
+        _, T_out, C_out, _, _ = output_shape
 
-    def forward(self, source, targets=None, teacher_forcing_ratio=0.5):
-        init_state = self.encoder.init_hidden(source.shape[0])
-        output, _ = self.encoder(source, init_state, self.node_embeddings)
-        output = output[:, -1:, :, :]
-        output = self.end_conv(output)
-        output = output.squeeze(-1)
-        output = rearrange(output, 'b (t c) n -> b t n c', t=self.horizon, c=self.output_dim)
-        return output
+        assert T_out == 1
 
+        self.T_in = T_in
+        self.C_in = C_in
+        self.H = H
+        self.W = W
+        self.N = H * W
+        self.T_out = T_out
+        self.C_out = C_out
 
-class ConvProjector(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, 
-                 spatial_size: Tuple[int, int], target_size: Tuple[int, int]):
-        super(ConvProjector, self).__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.spatial_size = spatial_size
-        self.target_size = target_size
-        
-        self.downsample_h = spatial_size[0] // target_size[0]
-        self.downsample_w = spatial_size[1] // target_size[1]
-        
-        self.encoder = nn.Sequential(
-            nn.Conv2d(in_channels, 64, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(64, out_channels, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True)
+        self.hidden_dim = 64
+        self.num_layers = 2
+        self.cheb_k = 2
+        self.embed_dim = 10
+
+        self.node_embeddings = nn.Parameter(
+            torch.randn(self.N, self.embed_dim),
+            requires_grad=True
         )
-        
-        self.decoder = nn.Sequential(
-            nn.Conv2d(out_channels, 64, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(64, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(64, in_channels, kernel_size=3, padding=1)
-        )
-    
-    def encode(self, x):
-        B, T = x.shape[:2]
-        x = rearrange(x, 'b t c h w -> (b t) c h w')
-        x = self.encoder(x)
-        x = rearrange(x, '(b t) c h w -> b t c h w', b=B, t=T)
-        return x
-    
-    def decode(self, x):
-        B, T = x.shape[:2]
-        x = rearrange(x, 'b t c h w -> (b t) c h w')
-        x = self.decoder(x)
-        x = rearrange(x, '(b t) c h w -> b t c h w', b=B, t=T)
-        return x
 
+        self.encoder = AVWDCRNN(
+            node_num=self.N,
+            dim_in=C_in,
+            dim_out=self.hidden_dim,
+            cheb_k=self.cheb_k,
+            embed_dim=self.embed_dim,
+            num_layers=self.num_layers
+        )
 
-class PhaseFieldPredictor(nn.Module):
-    def __init__(self, 
-                 input_channels: int = 10,
-                 spatial_size: Tuple[int, int] = (64, 64),
-                 proj_channels: int = 32,
-                 target_spatial_size: Tuple[int, int] = (32, 32),
-                 hidden_dim: int = 64,
-                 num_layers: int = 2,
-                 cheb_k: int = 3,
-                 embed_dim: int = 16):
-        super(PhaseFieldPredictor, self).__init__()
-        
-        self.input_channels = input_channels
-        self.spatial_size = spatial_size
-        self.proj_channels = proj_channels
-        self.target_spatial_size = target_spatial_size
-        
-        self.projector = ConvProjector(
-            in_channels=input_channels,
-            out_channels=proj_channels,
-            spatial_size=spatial_size,
-            target_size=target_spatial_size
-        )
-        
-        num_nodes = target_spatial_size[0] * target_spatial_size[1]
-        self.agcrn = AGCRN(
-            num_nodes=num_nodes,
-            input_dim=proj_channels,
-            hidden_dim=hidden_dim,
-            output_dim=proj_channels,
-            horizon=1,
-            num_layers=num_layers,
-            cheb_k=cheb_k,
-            embed_dim=embed_dim
-        )
-    
-    def forward(self, x: torch.Tensor, teacher_forcing_ratio: float = 0.0) -> torch.Tensor:
+        self.proj = nn.Linear(self.hidden_dim, C_out)
+
+    def forward(self, x):
         B, T, C, H, W = x.shape
-        x_proj = self.projector.encode(x)
-        x_graph = rearrange(x_proj, 'b t c h w -> b t (h w) c')
-        pred_graph = self.agcrn(x_graph, teacher_forcing_ratio=teacher_forcing_ratio)
-        H_small, W_small = self.target_spatial_size
-        pred_proj = rearrange(pred_graph, 'b t (h w) c -> b t c h w', h=H_small, w=W_small)
-        output = self.projector.decode(pred_proj)
-        return output
+        assert T == self.T_in
+        assert C == self.C_in
+        assert H == self.H and W == self.W
+
+        x = x.permute(0, 1, 3, 4, 2)
+        x = x.reshape(B, T, self.N, C)
+
+        init_state = self.encoder.init_hidden(B).to(x.device)
+        output, _ = self.encoder(x, init_state, self.node_embeddings)
+
+        last = output[:, -1, :, :]
+        out = self.proj(last)
+
+        out = out.reshape(B, self.H, self.W, self.C_out)
+        out = out.permute(0, 3, 1, 2).unsqueeze(1)
+
+        return out

@@ -67,12 +67,12 @@ class BaseConvRNN(nn.Module):
         self._curr_states = None
         self._counter = 0
 
-class TrajGRU(BaseConvRNN):
+class traj(BaseConvRNN):
     def __init__(self, input_channel, num_filter, b_h_w, zoneout=0.0, L=5,
                  i2h_kernel=(3, 3), i2h_stride=(1, 1), i2h_pad=(1, 1),
                  h2h_kernel=(5, 5), h2h_dilate=(1, 1),
                  act_type=torch.tanh):
-        super(TrajGRU, self).__init__(num_filter=num_filter,
+        super(traj, self).__init__(num_filter=num_filter,
                                       b_h_w=b_h_w,
                                       h2h_kernel=h2h_kernel,
                                       h2h_dilate=h2h_dilate,
@@ -80,7 +80,7 @@ class TrajGRU(BaseConvRNN):
                                       i2h_pad=i2h_pad,
                                       i2h_stride=i2h_stride,
                                       act_type=act_type,
-                                      prefix='TrajGRU')
+                                      prefix='traj')
         self._L = L
         self._zoneout = zoneout
         self.i2h = nn.Conv2d(in_channels=input_channel,
@@ -165,53 +165,64 @@ class TrajGRU(BaseConvRNN):
             prev_h = next_h
         return torch.stack(outputs), next_h
 
-class PhaseFieldPredictor(nn.Module):
-    def __init__(self, input_channels=10, hidden_dim=64, num_layers=2, 
-                 output_channels=10, L=5, zoneout=0.0):
-        super(PhaseFieldPredictor, self).__init__()
-        self.input_channels = input_channels
-        self.hidden_dim = hidden_dim
-        self.num_layers = num_layers
-        self.output_channels = output_channels
+
+class TrajGRU(nn.Module):
+    def __init__(self, input_shape, output_shape,
+                 hidden_dim=64, num_layers=3, L=13, zoneout=0.0):
+        super(TrajGRU, self).__init__()
+        self.input_channels = input_shape[2]
+        self.output_channels = output_shape[2]
+        _, _, _, H, W = input_shape
+
         self.encoder_layers = nn.ModuleList()
         for i in range(num_layers):
-            in_ch = input_channels if i == 0 else hidden_dim
+            in_ch = self.input_channels if i == 0 else hidden_dim
             self.encoder_layers.append(
-                TrajGRU(input_channel=in_ch,
-                       num_filter=hidden_dim,
-                       b_h_w=(1, 64, 64),
-                       zoneout=zoneout,
-                       L=L,
-                       act_type=torch.tanh)
+                traj(
+                    input_channel=in_ch,
+                    num_filter=hidden_dim,
+                    b_h_w=(1, H, W),
+                    zoneout=zoneout,
+                    L=L,
+                    act_type=torch.tanh
+                )
             )
-        self.predictor = TrajGRU(input_channel=hidden_dim,
-                                num_filter=hidden_dim,
-                                b_h_w=(1, 64, 64),
-                                zoneout=zoneout,
-                                L=L,
-                                act_type=torch.tanh)
-        self.output_conv = nn.Conv2d(hidden_dim, output_channels, 
-                                   kernel_size=1, stride=1, padding=0)
-    
+
+        self.predictor = traj(
+            input_channel=hidden_dim,
+            num_filter=hidden_dim,
+            b_h_w=(1, H, W),
+            zoneout=zoneout,
+            L=L,
+            act_type=torch.tanh
+        )
+
+        self.output_conv = nn.Conv2d(
+            hidden_dim, self.output_channels, kernel_size=1
+        )
+
     def forward(self, x):
         B, T, C, H, W = x.shape
+        # TrajGRU cell expects [T, B, C, H, W]
         x = x.permute(1, 0, 2, 3, 4)
-        hidden_states = []
+
         current_input = x
-        for i, encoder in enumerate(self.encoder_layers):
-            encoder._batch_size = B
-            encoder._state_height = H
-            encoder._state_width = W
-            layer_output, final_state = encoder(current_input, seq_len=T)
+        hidden_states = []
+        for encoder in self.encoder_layers:
+            layer_output, final_state = encoder(
+                inputs=current_input,
+                seq_len=T
+            )
             hidden_states.append(final_state)
             current_input = layer_output
-        self.predictor._batch_size = B
-        self.predictor._state_height = H
-        self.predictor._state_width = W
-        predicted_output, _ = self.predictor(inputs=None, 
-                                           states=hidden_states[-1], 
-                                           seq_len=1)
-        predicted_frame = predicted_output[0]
+        predicted_seq, _ = self.predictor(
+            inputs=None,
+            states=hidden_states[-1],
+            seq_len=1
+        )
+        predicted_frame = predicted_seq[0]
         output = self.output_conv(predicted_frame)
         output = output.unsqueeze(1)
+
         return output
+

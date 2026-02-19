@@ -1,5 +1,4 @@
 
-
 # https://arxiv.org/abs/2403.12553
 
 import torch
@@ -8,44 +7,49 @@ import torch.nn.functional as F
 from einops import rearrange
 import sys
 sys.path.append("./neuraloperator")
-from neuralop.models.codano import CODANO
+from neuralop.models.codano import CODANO as original_CODANO
 
 
-class PhaseFieldPredictor(nn.Module):
-    def __init__(self, CODANOClass=CODANO):
+class CODANO(nn.Module):
+    def __init__(self, input_shape, output_shape):
         super().__init__()
 
-        self.input_steps  = 5
-        self.output_steps = 1
-        self.channels     = 10
-        self.height       = 64
-        self.width        = 64
+        _, T_in, C_in, H, W = input_shape
+        _, T_out, C_out, H_out, W_out = output_shape
+
+        assert H == H_out and W == W_out
+        assert T_out == 1
+
+        self.T_in = T_in
+        self.C_in = C_in
+        self.C_out = C_out
+        self.H = H
+        self.W = W
 
         self.temporal_fusion = nn.Conv2d(
-            in_channels=self.channels * self.input_steps,
-            out_channels=self.channels,
-            kernel_size=3,
-            padding=1
+            in_channels=T_in * C_in,
+            out_channels=C_in,
+            kernel_size=1
         )
 
-        self.codano = CODANOClass(
-            output_variable_codimension=1,
-            lifting_channels=128,
-            hidden_variable_codimension=32,
-            projection_channels=128,
-            n_layers=4,
-            n_modes=[[8, 8], [8, 8], [8, 8], [8, 8]],
-            per_layer_scaling_factors=[[1.0, 1.0]] * 4,
-            n_heads=[2, 2, 2, 2],
-            attention_scaling_factors=[1.0] * 4,
-            nonlinear_attention=False,
+        self.codano = original_CODANO(
+            output_variable_codimension=C_out,
+            lifting_channels=64,
+            hidden_variable_codimension=64,
+            projection_channels=64,
+            n_layers=6,
+            n_modes=[[16, 16]] * 6,
+            per_layer_scaling_factors=[[1.0, 1.0]] * 6,
+            n_heads=[4] * 6,
+            attention_scaling_factors=[1.0] * 6,
+            nonlinear_attention=True,
             non_linearity=F.gelu,
             attention_token_dim=1,
             per_channel_attention=False,
             use_horizontal_skip_connection=True,
-            horizontal_skips_map={3: 0, 2: 1},
-            use_positional_encoding=False,
-            positional_encoding_dim=8,
+            horizontal_skips_map={5: 0, 4: 1, 3: 2},
+            use_positional_encoding=True,
+            positional_encoding_dim=2,
             positional_encoding_modes=None,
             static_channel_dim=0,
             domain_padding=0.1,
@@ -56,13 +60,11 @@ class PhaseFieldPredictor(nn.Module):
 
     def forward(self, x):
         B, T, C, H, W = x.shape
-        assert T == self.input_steps, f"Expected T={self.input_steps}, got {T}"
-        assert C == self.channels,    f"Expected C={self.channels}, got {C}"
-        assert H == self.height,      f"Expected H={self.height}, got {H}"
-        assert W == self.width,       f"Expected W={self.width}, got {W}"
+        assert T == self.T_in and C == self.C_in
+        assert H == self.H and W == self.W
 
-        x_flat = rearrange(x, 'b t c h w -> b (t c) h w')
-        x_fused = self.temporal_fusion(x_flat)
-        y = self.codano(x_fused)
+        x = rearrange(x, 'b t c h w -> b (t c) h w')
+        x = self.temporal_fusion(x)
+        y = self.codano(x)
         y = y.unsqueeze(1)
         return y

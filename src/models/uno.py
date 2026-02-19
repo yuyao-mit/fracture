@@ -6,53 +6,65 @@ from torch import nn
 import torch.nn.functional as F
 import sys
 sys.path.append("./neuraloperator")
-from neuralop.models.uno import UNO
+
+from neuralop.models.uno import UNO as original_UNO
 from einops import rearrange
 
-class PhaseFieldPredictor(nn.Module):
-    def __init__(self, UNOClass=UNO):
+
+class UNO(nn.Module):
+    def __init__(self, input_shape, output_shape):
         super().__init__()
-        
-        self.input_steps = 5
-        self.output_steps = 1
-        self.channels = 10
-        self.height = 64
-        self.width = 64
-        
+
+        _, T_in, C_in, H, W = input_shape
+        _, T_out, C_out, H_out, W_out = output_shape
+
+        assert H == H_out and W == W_out
+        assert T_out == 1
+
+        self.T_in = T_in
+        self.C_in = C_in
+        self.C_out = C_out
+        self.H = H
+        self.W = W
+
         self.temporal_fusion = nn.Conv2d(
-            in_channels=self.channels * self.input_steps,
-            out_channels=self.channels * 2,
-            kernel_size=3,
-            padding=1
+            in_channels=T_in * C_in,
+            out_channels=32,
+            kernel_size=1
         )
-        
-        self.uno = UNOClass(
-            in_channels=self.channels * 2,
-            out_channels=self.channels,
+
+        self.uno = original_UNO(
+            in_channels=32,
+            out_channels=C_out,
             hidden_channels=64,
-            lifting_channels=128,
-            projection_channels=128,
-            n_layers=4,
-            uno_out_channels=[64, 64, 64, 64],
-            uno_n_modes=[[8, 8], [8, 8], [8, 8], [8, 8]],
-            uno_scalings=[[1.0, 1.0], [1.0, 1.0], [1.0, 1.0], [1.0, 1.0]],
-            horizontal_skips_map={3: 0, 2: 1},
+            lifting_channels=32,
+            projection_channels=32,
+            n_layers=7,
+            uno_out_channels=[64, 128, 128, 128, 128, 64, 32],
+            uno_n_modes=[[12, 12]] * 7,
+            uno_scalings=[
+                [0.75, 0.75],
+                [0.5, 0.5],
+                [0.5, 0.5],
+                [1.0, 1.0],
+                [2.0, 2.0],
+                [2.0, 2.0],
+                [4.0/3.0, 4.0/3.0],
+            ],
+            horizontal_skips_map={4: 2, 5: 1, 6: 0},
             domain_padding=0.1,
             positional_embedding='grid',
             non_linearity=F.gelu,
             channel_mlp_skip="linear"
         )
-    
+
     def forward(self, x):
         B, T, C, H, W = x.shape
-        assert T == self.input_steps, f"Expected T={self.input_steps}, got {T}"
-        assert C == self.channels, f"Expected C={self.channels}, got {C}"
-        assert H == self.height, f"Expected H={self.height}, got {H}"
-        assert W == self.width, f"Expected W={self.width}, got {W}"
-        
-        x_flattened = rearrange(x, 'b t c h w -> b (t c) h w')
-        x_fused = self.temporal_fusion(x_flattened)
-        output = self.uno(x_fused)
-        output = output.unsqueeze(1)
-        
-        return output
+        assert T == self.T_in and C == self.C_in
+        assert H == self.H and W == self.W
+
+        x = rearrange(x, 'b t c h w -> b (t c) h w')
+        x = self.temporal_fusion(x)
+        out = self.uno(x)
+        out = out.unsqueeze(1)
+        return out

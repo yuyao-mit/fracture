@@ -47,12 +47,8 @@ class ConvLSTMCell(nn.Module):
                                     bias = self.bias)
 
     def forward(self, input_tensor, cur_state):
-        # cur_state is passed in as a parameter, not a member variable. 
-        # this now fully simulates the dynamics mentioned in the paper. 
         h_cur, c_cur = cur_state
-
-        combined = torch.cat([input_tensor, h_cur], dim=1)  # concatenate along channel axis
-
+        combined = torch.cat([input_tensor, h_cur], dim=1)
         combined_conv = self.conv(combined)
         cprev_conv = self.conv_c(c_cur)
         cprev_i, cprev_f = torch.split(cprev_conv, self.hidden_dim, dim = 1)
@@ -62,10 +58,8 @@ class ConvLSTMCell(nn.Module):
         g = torch.tanh(cc_g)
         c_next = f * c_cur + i * g
         cnext_conv = self.conv_cnext(c_next)
-
         o = torch.sigmoid(cc_o + cnext_conv)
         h_next = o * torch.tanh(c_next)
-
         return h_next, c_next
 
     def init_hidden(self, batch_size, image_size):
@@ -100,58 +94,39 @@ class ConvLSTM(nn.Module):
         >> h = last_states[0][0]  # 0 for layer index, 0 for h index
     """
 
-    def __init__(self, input_dim, hidden_dim, kernel_size, num_layers,
-                 batch_first=False, bias=True, return_all_layers=False):
+    def __init__(self, input_shape, output_shape, hidden_dim=[64, 64, 128], kernel_size=(3, 3), num_layers=3, batch_first=True, bias=True, return_all_layers=False):
         super(ConvLSTM, self).__init__()
 
         self._check_kernel_size_consistency(kernel_size)
-
         # Make sure that both `kernel_size` and `hidden_dim` are lists having len == num_layers
         kernel_size = self._extend_for_multilayer(kernel_size, num_layers)
         hidden_dim = self._extend_for_multilayer(hidden_dim, num_layers)
         if not len(kernel_size) == len(hidden_dim) == num_layers:
             raise ValueError('Inconsistent list length.')
 
-        self.input_dim = input_dim
+        self.input_dim = input_shape[2]
         self.hidden_dim = hidden_dim
         self.kernel_size = kernel_size
         self.num_layers = num_layers
         self.batch_first = batch_first
         self.bias = bias
         self.return_all_layers = return_all_layers
-        self.fusion_module = nn.Conv3d(in_channels=5,out_channels=1,kernel_size=1,stride=1,bias=True)
-
+        self.head = nn.Conv2d(in_channels=self.hidden_dim[-1], out_channels=output_shape[2], kernel_size=1)
 
         cell_list = []
         for i in range(0, self.num_layers):
             cur_input_dim = self.input_dim if i == 0 else self.hidden_dim[i - 1]
-
             cell_list.append(ConvLSTMCell(input_dim=cur_input_dim,
                                           hidden_dim=self.hidden_dim[i],
                                           kernel_size=self.kernel_size[i],
                                           bias=self.bias))
-
         self.cell_list = nn.ModuleList(cell_list)
 
     def forward(self, input_tensor, hidden_state=None):
-        """
-        Parameters
-        ----------
-        input_tensor: todo
-            5-D Tensor either of shape (t, b, c, h, w) or (b, t, c, h, w)
-        hidden_state: todo
-            None. todo implement stateful
-        Returns
-        -------
-        last_state_list, layer_output
-        """
         if not self.batch_first:
             # (t, b, c, h, w) -> (b, t, c, h, w)
             input_tensor = input_tensor.permute(1, 0, 2, 3, 4)
-
         b, _, _, h, w = input_tensor.size()
-
-        # Implement stateful ConvLSTM
         if hidden_state is not None:
             raise NotImplementedError()
         else:
@@ -183,10 +158,11 @@ class ConvLSTM(nn.Module):
         if not self.return_all_layers:
             layer_output_list = layer_output_list[-1:]
             last_state_list = last_state_list[-1:]
-
-        #return layer_output_list, last_state_list
-        #return layer_output_list[0][:,-1:].contiguous() # only return the pred at next timestep
-        return self.fusion_module(layer_output_list[0])
+        
+        last_layer_output = layer_output_list[-1]
+        last_hidden = last_layer_output[:, -1]
+        pred = self.head(last_hidden)
+        return pred
 
     def _init_hidden(self, batch_size, image_size):
         init_states = []
