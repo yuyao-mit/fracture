@@ -1,3 +1,5 @@
+请修改
+
 import argparse
 import torch
 from torch import optim
@@ -5,30 +7,27 @@ from torch.utils.data import DataLoader
 from pathlib import Path
 import wandb
 
-from unet.unet_model import UNetFiLM
+from models import fno, uno, codano, rno
 from utils.dataset import CrackDataset
-from utils.loss_custom import masked_mse_loss_weighted
 
 
-def train_model(model, device, train_dir, val_dir, dir_checkpoint,
-                epochs=20, batch_size=16, learning_rate=1e-5):
-
-    # ---------------------------
-    # Initialize wandb
-    # ---------------------------
+def train_model(model,
+                train_dir,
+                val_dir,
+                ckpt_dir,
+                epochs,
+                batch_size):
+    
     wandb.init(
         project="training_w_fem",
         config={
             "epochs": epochs,
             "batch_size": batch_size,
-            "learning_rate": learning_rate,
-            "model": "UNetFiLM",
         }
     )
 
     train_dataset = CrackDataset(train_dir)
     val_dataset   = CrackDataset(val_dir)
-
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=8)
     val_loader   = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=8)
 
@@ -36,14 +35,9 @@ def train_model(model, device, train_dir, val_dir, dir_checkpoint,
 
     for epoch in range(epochs):
 
-        # ---------------------------
-        # Training
-        # ---------------------------
         model.train()
         train_loss = 0
-
         for batch in train_loader:
-
             images = batch["image"].to(device)
             masks  = batch["mask"].to(device)
             lc     = batch["lc"].to(device)
