@@ -1,12 +1,15 @@
 
 # https://arxiv.org/abs/2010.08895
 
+import os, sys
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_NEURALOP = os.path.join(_HERE, "neuraloperator")
+if _NEURALOP not in sys.path:
+    sys.path.insert(0, _NEURALOP)
+
 import torch
 from torch import nn
 import torch.nn.functional as F
-import sys
-sys.path.append("./neuraloperator")
-
 from neuralop.models import FNO as original_FNO
 
 class FNO(nn.Module):

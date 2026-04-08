@@ -1,9 +1,15 @@
 
+import os, sys
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_NEURALOP = os.path.join(_HERE, "neuraloperator")
+if _NEURALOP not in sys.path:
+    sys.path.insert(0, _NEURALOP)
+
 from typing import Dict, Type, Tuple
 import torch.nn as nn
+from .fno import FNO
 from .uno import UNO
 from .codano import CODANO
-from .fno import FNO
 from .rno import RNO
 
 

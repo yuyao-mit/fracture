@@ -1,14 +1,17 @@
 
 # https://arxiv.org/abs/2204.11127
 
+import os, sys
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_NEURALOP = os.path.join(_HERE, "neuraloperator")
+if _NEURALOP not in sys.path:
+    sys.path.insert(0, _NEURALOP)
+
 import torch
 from torch import nn
 import torch.nn.functional as F
-import sys
-sys.path.append("./neuraloperator")
-
-from neuralop.models.uno import UNO as original_UNO
 from einops import rearrange
+from neuralop.models import UNO as original_UNO
 
 
 class UNO(nn.Module):

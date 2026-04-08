@@ -1,13 +1,17 @@
 
 # https://arxiv.org/abs/2403.12553
 
+import os, sys
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_NEURALOP = os.path.join(_HERE, "neuraloperator")
+if _NEURALOP not in sys.path:
+    sys.path.insert(0, _NEURALOP)
+
 import torch
 from torch import nn
 import torch.nn.functional as F
 from einops import rearrange
-import sys
-sys.path.append("./neuraloperator")
-from neuralop.models.codano import CODANO as original_CODANO
+from neuralop.models import CODANO as original_CODANO
 
 
 class CODANO(nn.Module):
