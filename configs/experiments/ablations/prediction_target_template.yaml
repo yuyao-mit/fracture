@@ -1,0 +1,16 @@
+name: fracture_ablation_prediction_target_replace_me
+benchmark: ablation_prediction_target
+
+paths:
+  config: configs/paths/shared_paths.example.yaml
+
+variants:
+  - direct_solution
+  - parameter_field
+  - warm_start
+
+model:
+  config: configs/models/hybrid_template.yaml
+
+artifacts:
+  run_subdir: ablations/prediction_target/fracture_ablation_prediction_target_replace_me

@@ -1,0 +1,9 @@
+defaults:
+  - configs/models/hybrid_paramfem.yaml
+
+run:
+  split: ablation_coupling
+  model_id: paramfem_fewstep
+
+hybrid:
+  solver_steps: 3

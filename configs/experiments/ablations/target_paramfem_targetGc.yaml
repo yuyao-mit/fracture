@@ -1,0 +1,9 @@
+defaults:
+  - configs/models/hybrid_paramfem.yaml
+
+run:
+  split: ablation_target
+  model_id: paramfem_targetGc
+
+hybrid:
+  target_field: Gc

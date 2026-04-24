@@ -1,0 +1,18 @@
+name: baseline_fracture_id_replace_me
+benchmark: id
+
+paths:
+  config: configs/paths/shared_paths.example.yaml
+
+model:
+  config: configs/models/operator_template.yaml
+
+evaluation:
+  metrics:
+    - rel_l2_u
+    - rel_l2_sigma
+    - rel_l2_damage
+    - failure_load_error
+
+artifacts:
+  run_subdir: id/baseline_fracture_id_replace_me

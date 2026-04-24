@@ -1,0 +1,15 @@
+name: fracture_ood_resolution_replace_me
+benchmark: ood_resolution
+
+paths:
+  config: configs/paths/shared_paths.example.yaml
+
+split:
+  train_manifest: metadata/splits/resolution_train.json
+  test_manifest: metadata/splits/resolution_ood_test.json
+
+model:
+  config: configs/models/operator_template.yaml
+
+artifacts:
+  run_subdir: ood/resolution/fracture_ood_resolution_replace_me

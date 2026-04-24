@@ -1,0 +1,13 @@
+paths:
+  data_root: /ocean/projects/mch250029p/shared/fracture
+  ckpt_root: /ocean/projects/mch250029p/shared/ckpt
+  run_root: /ocean/projects/mch250029p/shared/experiments/fracture
+  log_root: /ocean/projects/mch250029p/shared/experiments/fracture/logs
+  metric_root: /ocean/projects/mch250029p/shared/experiments/fracture/metrics
+  prediction_root: /ocean/projects/mch250029p/shared/experiments/fracture/predictions
+  figure_root: /ocean/projects/mch250029p/shared/experiments/fracture/figures
+  table_root: /ocean/projects/mch250029p/shared/experiments/fracture/tables
+
+notes:
+  - Copy this file to a machine-specific path config before launching jobs.
+  - Keep machine-specific overrides out of git.

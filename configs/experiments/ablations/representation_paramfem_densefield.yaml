@@ -1,0 +1,9 @@
+defaults:
+  - configs/models/hybrid_paramfem.yaml
+
+run:
+  split: ablation_representation
+  model_id: paramfem_densefield
+
+hybrid:
+  parameterization: field

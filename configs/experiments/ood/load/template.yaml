@@ -1,0 +1,15 @@
+name: fracture_ood_load_replace_me
+benchmark: ood_load
+
+paths:
+  config: configs/paths/shared_paths.example.yaml
+
+split:
+  train_manifest: metadata/splits/load_train.json
+  test_manifest: metadata/splits/load_ood_test.json
+
+model:
+  config: configs/models/operator_template.yaml
+
+artifacts:
+  run_subdir: ood/load/fracture_ood_load_replace_me

@@ -1,0 +1,9 @@
+defaults:
+  - configs/models/hybrid_paramfem.yaml
+
+run:
+  split: ablation_training_regime
+  model_id: paramfem_twostage
+
+hybrid:
+  differentiable_fem: false

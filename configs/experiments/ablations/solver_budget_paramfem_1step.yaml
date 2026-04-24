@@ -1,0 +1,9 @@
+defaults:
+  - configs/models/hybrid_paramfem.yaml
+
+run:
+  split: ablation_solver_budget
+  model_id: paramfem_1step
+
+hybrid:
+  solver_steps: 1

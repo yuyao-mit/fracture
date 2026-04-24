@@ -1,0 +1,5 @@
+defaults:
+  - configs/models/operator_rno.yaml
+
+run:
+  split: lowdata100

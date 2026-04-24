@@ -1,0 +1,23 @@
+defaults:
+  - configs/base.yaml
+
+run:
+  family: hybrid
+  model_id: warmstart
+
+model:
+  id: fno
+  family: hybrid_warmstart
+
+hybrid:
+  target_field: damage
+  parameterization: field
+  differentiable_fem: false
+  solver_steps: 3
+  allow_fallback: false
+
+solver:
+  config: configs/solver/phase_field_template.yaml
+
+artifacts:
+  ckpt_subdir: hybrid/warmstart

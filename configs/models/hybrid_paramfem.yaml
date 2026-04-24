@@ -1,0 +1,23 @@
+defaults:
+  - configs/base.yaml
+
+run:
+  family: hybrid
+  model_id: paramfem
+
+model:
+  id: fno               # backbone
+  family: hybrid_param_to_fem
+
+hybrid:
+  target_field: Gc      # Gc | damage | latent
+  parameterization: field
+  differentiable_fem: false
+  solver_steps: 1
+  allow_fallback: false  # require a working FEM stack by default (paper-eligible)
+
+solver:
+  config: configs/solver/phase_field_template.yaml
+
+artifacts:
+  ckpt_subdir: hybrid/paramfem

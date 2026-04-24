@@ -1,0 +1,31 @@
+# Shared defaults for every experiment. Override per-experiment as needed.
+
+run:
+  family: baseline          # baseline | hybrid
+  task: fracture
+  seed: 0
+
+data:
+  input_steps: 4
+  rollout_steps: 1
+  infer_latent_variable: true
+  nan_channel: 9
+
+training:
+  batch_size: 8
+  epochs: 200
+  lr: 1.0e-4
+  weight_decay: 1.0e-5
+  num_workers: 4
+  ckpt_every: 10
+  device: cuda
+
+eval:
+  batch_size: 16
+  num_workers: 4
+
+wandb:
+  enabled: true
+  project: fracture
+  mode: null                # null | online | offline | disabled
+  tags: []

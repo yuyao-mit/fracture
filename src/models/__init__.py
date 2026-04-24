@@ -38,7 +38,21 @@ def build_model(input_shape: Tuple, output_shape: Tuple, model_name: str):
     return model
 
 
+def build_from_cfg(cfg, input_shape: Tuple, output_shape: Tuple):
+    """Build a model from a config block.
+
+    Expected keys (all optional except id):
+      model.id:           fno | uno | codano | rno (filename stem)
+    """
+    mcfg = cfg.get("model") or {}
+    model_id = mcfg.get("id") or cfg.get("model_id")
+    if model_id is None:
+        raise ValueError("cfg missing model.id")
+    return build_model(input_shape=input_shape, output_shape=output_shape, model_name=model_id)
+
+
 __all__ = [
     "build_model",
+    "build_from_cfg",
     "MODEL_REGISTRY",
 ]

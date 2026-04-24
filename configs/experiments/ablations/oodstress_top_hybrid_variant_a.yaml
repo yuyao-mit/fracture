@@ -1,0 +1,8 @@
+defaults:
+  - configs/models/hybrid_paramfem.yaml
+
+run:
+  split: ablation_oodstress
+  model_id: top_hybrid_variant_a
+
+# Requires metadata/splits/ablation_oodstress.json (e.g. ood_geometry test cases)

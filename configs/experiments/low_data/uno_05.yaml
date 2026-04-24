@@ -1,0 +1,5 @@
+defaults:
+  - configs/models/operator_uno.yaml
+
+run:
+  split: lowdata05

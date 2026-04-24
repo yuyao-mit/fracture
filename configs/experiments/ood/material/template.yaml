@@ -1,0 +1,15 @@
+name: fracture_ood_material_replace_me
+benchmark: ood_material
+
+paths:
+  config: configs/paths/shared_paths.example.yaml
+
+split:
+  train_manifest: metadata/splits/material_train.json
+  test_manifest: metadata/splits/material_ood_test.json
+
+model:
+  config: configs/models/operator_template.yaml
+
+artifacts:
+  run_subdir: ood/material/fracture_ood_material_replace_me

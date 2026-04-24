@@ -1,0 +1,7 @@
+defaults:
+  - configs/models/operator_uno.yaml
+
+run:
+  split: ood_geometry
+
+# Requires metadata/splits/ood_geometry.json listing test case stems.

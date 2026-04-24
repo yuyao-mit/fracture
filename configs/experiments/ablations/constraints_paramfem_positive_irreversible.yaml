@@ -1,0 +1,9 @@
+defaults:
+  - configs/models/hybrid_paramfem.yaml
+
+run:
+  split: ablation_constraints
+  model_id: paramfem_positive_irreversible
+
+hybrid:
+  constraint_mode: positive_irreversible

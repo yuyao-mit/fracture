@@ -1,0 +1,7 @@
+defaults:
+  - configs/models/operator_uno.yaml
+
+run:
+  split: ood_material
+
+# Requires metadata/splits/ood_material.json listing test case stems.

@@ -1,0 +1,9 @@
+defaults:
+  - configs/base.yaml
+
+model:
+  id: rno
+  family: baseline_operator
+
+artifacts:
+  ckpt_subdir: baseline/rno

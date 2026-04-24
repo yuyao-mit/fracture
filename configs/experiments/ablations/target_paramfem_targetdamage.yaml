@@ -1,0 +1,9 @@
+defaults:
+  - configs/models/hybrid_paramfem.yaml
+
+run:
+  split: ablation_target
+  model_id: paramfem_targetdamage
+
+hybrid:
+  target_field: damage

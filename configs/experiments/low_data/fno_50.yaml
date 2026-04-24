@@ -1,0 +1,5 @@
+defaults:
+  - configs/models/operator_fno.yaml
+
+run:
+  split: lowdata50

@@ -1,0 +1,18 @@
+problem:
+  type: phase_field_fracture
+  dimension: 2
+
+material:
+  E: 1.0
+  nu: 0.3
+  Gc: 1.0
+  length_scale: 0.02
+
+solver:
+  nonlinear_max_iters: 50
+  nonlinear_tol: 1.0e-6
+  linear_tol: 1.0e-8
+
+mesh:
+  family: fixed
+  resolution: medium

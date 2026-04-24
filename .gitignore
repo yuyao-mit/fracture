@@ -185,3 +185,57 @@ cython_debug/
 
 paper/
 instruction.txt
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.so
+*.egg-info/
+
+# Tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+
+# Environments
+.venv/
+venv/
+env/
+.env
+
+# Notebook / editor
+.ipynb_checkpoints/
+.DS_Store
+
+# Training and experiment outputs
+outputs/
+results/
+logs/
+runs/
+wandb/
+mlruns/
+tensorboard/
+tb_logs/
+metrics/
+predictions/
+figures/
+tables/
+exports/
+artifacts/
+
+# Cluster / batch outputs
+slurm-*.out
+slurm-*.err
+nohup.out
+
+# Local aliases or symlinks to shared storage
+data/
+datasets/
+ckpt/
+checkpoints/
+shared/
+
+# Machine-specific path configs
+configs/paths/shared_paths.yaml
+configs/paths/local*.yaml

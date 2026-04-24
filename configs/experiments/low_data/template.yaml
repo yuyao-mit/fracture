@@ -1,0 +1,14 @@
+name: fracture_low_data_replace_me
+benchmark: low_data
+
+paths:
+  config: configs/paths/shared_paths.example.yaml
+
+data:
+  train_fraction: 0.1
+
+model:
+  config: configs/models/operator_template.yaml
+
+artifacts:
+  run_subdir: low_data/fracture_low_data_replace_me

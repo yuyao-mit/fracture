@@ -1,0 +1,9 @@
+defaults:
+  - configs/models/hybrid_paramfem.yaml
+
+run:
+  split: ablation_inputs
+  model_id: paramfem_geomloadbc
+
+hybrid:
+  input_conditioning: geomloadbc

@@ -1,0 +1,22 @@
+name: replace_with_hybrid_name
+family: hybrid_param_to_fem
+
+neural_backbone:
+  module: src.models.replace_with_backbone
+  latent_dim: 64
+
+hybrid:
+  target_field: Gc
+  parameterization: field
+  differentiable_fem: false
+
+solver:
+  config: configs/solver/phase_field_template.yaml
+
+training:
+  batch_size: 4
+  learning_rate: 1.0e-4
+  epochs: 200
+
+artifacts:
+  ckpt_subdir: hybrid/replace_with_hybrid_name

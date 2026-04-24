@@ -1,0 +1,7 @@
+defaults:
+  - configs/models/operator_rno.yaml
+
+run:
+  split: ood_load
+
+# Requires metadata/splits/ood_load.json listing test case stems.

@@ -1,0 +1,9 @@
+defaults:
+  - configs/models/hybrid_paramfem.yaml
+
+run:
+  split: ablation_constraints
+  model_id: paramfem_positiveonly
+
+hybrid:
+  constraint_mode: positiveonly

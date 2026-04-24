@@ -1,0 +1,7 @@
+defaults:
+  - configs/models/operator_uno.yaml
+
+run:
+  split: ood_resolution
+
+# Requires metadata/splits/ood_resolution.json listing test case stems.

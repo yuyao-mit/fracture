@@ -1,0 +1,20 @@
+name: replace_with_operator_name
+family: baseline_operator
+module: src.models.replace_with_module
+
+model:
+  input_channels: 1
+  output_channels: 1
+  hidden_dim: 64
+  depth: 4
+
+training:
+  batch_size: 8
+  learning_rate: 1.0e-3
+  epochs: 200
+
+data:
+  split_manifest: metadata/splits/default_split.json
+
+artifacts:
+  ckpt_subdir: baseline/replace_with_operator_name
