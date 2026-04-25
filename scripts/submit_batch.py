@@ -56,6 +56,14 @@ def _configs_for_stage(stage: str, models: list[str] | None, fractions: list[str
         out = [_REPO / f"configs/experiments/id/{m}.yaml" for m in models]
         out.append(_REPO / "configs/experiments/id/paramfem.yaml")
         return out
+    if stage == "main_lowdata":
+        # Layer 2-C: selected baselines + paramfem across all five fractions.
+        lowdata_fracs = fractions if fractions else ["05", "10", "25", "50", "100"]
+        out = [_REPO / f"configs/experiments/low_data/{m}_{f}.yaml"
+               for m in models for f in lowdata_fracs]
+        out += [_REPO / f"configs/experiments/low_data/paramfem_{f}.yaml"
+                for f in lowdata_fracs]
+        return out
     if stage == "ood":
         out = [_REPO / f"configs/experiments/ood/{ood}/{m}.yaml"
                for ood in oods for m in models]
@@ -69,8 +77,24 @@ def _configs_for_stage(stage: str, models: list[str] | None, fractions: list[str
     raise ValueError(f"unknown stage {stage!r}")
 
 
+def _validate_overrides(overrides: list[str]) -> None:
+    """`sbatch --export=ALL,K=V,K=V,...` splits on commas. Reject any token
+    containing a comma or a shell metachar so the export string can't be
+    silently misparsed into an extra env var or interpreted by the shell."""
+    bad_chars = set(",$`\\\"' ")
+    for o in overrides:
+        if "=" not in o:
+            raise ValueError(f"override must be dotted.key=value, got {o!r}")
+        if any(c in bad_chars for c in o):
+            raise ValueError(
+                f"override {o!r} contains a character from {sorted(bad_chars)!r} "
+                f"which would corrupt the sbatch --export list"
+            )
+
+
 def _submit_one(cfg_path: Path, overrides: list[str], account: str, env: str,
                 dry_run: bool) -> dict:
+    _validate_overrides(overrides)
     cfg = load_config(str(cfg_path), overrides=overrides)
     ident = run_identity_from_cfg(cfg)
     paths = load_paths(cfg)
@@ -131,7 +155,8 @@ def _append_rows(rows: list[dict], stage: str):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--stage", required=True,
-                    choices=["screening_id", "screening_lowdata", "main", "ood", "ablations"])
+                    choices=["screening_id", "screening_lowdata", "main", "main_lowdata",
+                             "ood", "ablations"])
     ap.add_argument("--models", nargs="*", default=None,
                     help="Subset of {fno,uno,codano,rno}")
     ap.add_argument("--fractions", nargs="*", default=None,

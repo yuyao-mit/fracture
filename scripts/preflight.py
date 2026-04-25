@@ -50,6 +50,12 @@ def check_torch(strict_cuda: bool):
         import torch  # type: ignore
     except Exception as e:
         raise PreflightError(f"torch import failed: {e!r}")
+    # Actually exercise native extensions; import alone does not prove the
+    # install is healthy (missing .so, ABI mismatch etc.).
+    try:
+        torch.zeros(1).add_(1)
+    except Exception as e:
+        raise PreflightError(f"torch installed but broken (native ops fail): {e!r}")
     _ok(f"torch {torch.__version__}")
     if torch.cuda.is_available():
         _ok(f"cuda available (devices={torch.cuda.device_count()})")

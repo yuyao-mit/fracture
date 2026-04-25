@@ -59,6 +59,44 @@ def test_benchmark_group_mapping():
     assert _benchmark_group_for("ablation_target", "hybrid") == "ablation_target"
 
 
+def test_dataset_excludes_partial_by_default(tmp_path):
+    # Build a folder with 1 full and 2 partial files; assert the dataset
+    # ignores partials unless include_partial=True.
+    sys_path_before = list(sys.path)
+    try:
+        import numpy as np
+        from data.dataset import ChunkedScalarDatasetEfficient
+    except Exception:
+        import pytest as _pt
+        _pt.skip("torch/numpy unavailable")
+        return
+
+    folder = tmp_path / "d"
+    folder.mkdir()
+    T, C, H, W = 6, 10, 8, 8
+    # one full
+    np.savez(folder / "shear_case_001_fields.npz",
+             inputs=np.zeros((T, C, H, W), dtype=np.float32),
+             targets=np.zeros((T, 1, H, W), dtype=np.float32),
+             latent_variables=np.zeros((T, 1, H, W), dtype=np.float32),
+             lc=np.zeros(T, dtype=np.float32))
+    # two partials (same schema; filename suffix is the signal)
+    for i in (2, 3):
+        np.savez(folder / f"shear_case_00{i}_fields.partial.npz",
+                 inputs=np.zeros((T, C, H, W), dtype=np.float32),
+                 targets=np.zeros((T, 1, H, W), dtype=np.float32),
+                 latent_variables=np.zeros((T, 1, H, W), dtype=np.float32),
+                 lc=np.zeros(T, dtype=np.float32))
+
+    ds_default = ChunkedScalarDatasetEfficient(folder=str(folder), input_steps=4, rollout_steps=1)
+    assert len(ds_default.file_map) == 1
+
+    ds_all = ChunkedScalarDatasetEfficient(folder=str(folder), input_steps=4, rollout_steps=1,
+                                           include_partial=True)
+    assert len(ds_all.file_map) == 3
+    sys.path = sys_path_before
+
+
 def test_write_row_updates_existing(tmp_path):
     row = {
         "run_name": "baseline_fracture_id_fno_s0",

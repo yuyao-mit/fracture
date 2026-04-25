@@ -84,6 +84,15 @@ class HybridPredictor(nn.Module):
         return self.backbone(x)
 
     def step(self, x: Tensor) -> dict[str, Any]:
+        """One inference step. Returns both the backbone latent and the
+        FEM-solved field `d` (when FEM ran). Callers decide which to score:
+          - `latent_field`: the backbone's predicted parameter field (e.g. Gc),
+            used for training supervision against `latent_variables` from the
+            dataset. Always present.
+          - `d`: the FEM-solved damage field. Only present when FEM actually
+            ran successfully; None otherwise. Paper metrics should prefer `d`
+            when `true_fem_used=True`.
+        """
         latent = self.backbone(x)
         d: Tensor | None = None
         used = False
@@ -91,8 +100,13 @@ class HybridPredictor(nn.Module):
             try:
                 fields = {self.hybrid.target_field: latent.detach().cpu().numpy()}
                 out = fem_solve(fields, self.fem_cfg, max_iters=self.hybrid.solver_steps)
-                if "d" in out:
-                    d = torch.from_numpy(out["d"]).to(latent.device, dtype=latent.dtype)
+                if "d" not in out:
+                    raise FemUnavailableError(
+                        "fem_solve() returned without a 'd' key; contract says it must."
+                    )
+                d = torch.from_numpy(out["d"]).to(latent.device, dtype=latent.dtype)
+                # used <=> d populated. Keeps the invariant from the docstring:
+                # paper metrics should prefer `d` when `true_fem_used=True`.
                 used = True
             except FemUnavailableError:
                 if not self.hybrid.allow_fallback:

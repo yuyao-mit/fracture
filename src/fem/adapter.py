@@ -12,6 +12,7 @@ neural forward pass or fail loudly.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Mapping
 
 import numpy as np
@@ -54,7 +55,39 @@ class FemConfig:
 
     @classmethod
     def from_cfg(cls, cfg: Mapping[str, Any]) -> "FemConfig":
-        s = (cfg.get("solver") or {})
+        """Read FEM settings. If `solver.config` points at a solver YAML,
+        merge its material/solver/mesh blocks in first (inline keys win).
+
+        Inline overrides must nest under `material:`, `solver:`, or `mesh:`
+        sub-dicts — e.g. `solver: {config: X, solver: {nsteps: 10}}`. Flat
+        scalar keys directly under `solver:` (other than `config`) are
+        rejected to avoid silently dropping user-supplied values.
+        """
+        s = dict(cfg.get("solver") or {})
+        ref = s.pop("config", None)
+        unknown = {k: v for k, v in s.items() if k not in {"material", "solver", "mesh"}}
+        if unknown:
+            raise ValueError(
+                f"FemConfig.from_cfg: unexpected flat key(s) under `solver:`: "
+                f"{sorted(unknown)!r}. Nest them under material/solver/mesh."
+            )
+        if ref:
+            try:
+                from ..utils.config import load_yaml, REPO_ROOT
+            except ImportError:
+                from utils.config import load_yaml, REPO_ROOT  # type: ignore
+            ref_path = Path(ref)
+            if not ref_path.is_absolute():
+                ref_path = REPO_ROOT / ref_path
+            if not ref_path.exists():
+                raise FileNotFoundError(
+                    f"solver.config points at {ref_path} which does not exist"
+                )
+            base = load_yaml(ref_path)
+            for key in ("material", "solver", "mesh"):
+                merged = dict(base.get(key) or {})
+                merged.update(s.get(key) or {})
+                s[key] = merged
         mat = s.get("material") or {}
         num = s.get("solver") or {}
         mesh = s.get("mesh") or {}
@@ -68,9 +101,11 @@ class FemConfig:
             dt=float(num.get("dt", cls.dt)),
             rate=float(num.get("rate", cls.rate)),
             max_stagger=int(num.get("nonlinear_max_iters", cls.max_stagger)),
+            min_stagger=int(num.get("nonlinear_min_iters", cls.min_stagger)),
             tol=float(num.get("nonlinear_tol", cls.tol)),
             grid_nx=int(mesh.get("grid_nx", cls.grid_nx)),
             grid_ny=int(mesh.get("grid_ny", cls.grid_ny)),
+            top_disp_value=float(num.get("top_disp_value", cls.top_disp_value)),
         )
 
 

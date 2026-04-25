@@ -1,0 +1,5 @@
+defaults:
+  - configs/models/hybrid_paramfem.yaml
+
+run:
+  split: lowdata10

@@ -239,3 +239,9 @@ shared/
 # Machine-specific path configs
 configs/paths/shared_paths.yaml
 configs/paths/local*.yaml
+
+# Claude Code local state
+.claude/
+
+# Submitted-job ledger (machine-local; absolute paths + slurm job ids)
+metadata/runs/submitted_jobs.csv

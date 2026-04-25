@@ -10,6 +10,8 @@ data:
   rollout_steps: 1
   infer_latent_variable: true
   nan_channel: 9
+  include_partial: false
+  samples_cache_dir: /ocean/projects/mch250029p/shared/experiments/fracture/dataset_cache
 
 training:
   batch_size: 8

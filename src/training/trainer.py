@@ -71,6 +71,11 @@ def train_from_cfg(cfg: Mapping[str, Any]) -> dict[str, Any]:
     weight_decay = float(tcfg.get("weight_decay", 1e-5))
     num_workers = int(tcfg.get("num_workers", 4))
     ckpt_every = int(tcfg.get("ckpt_every", 10))
+    # Optional hard caps — 0 means "no cap". Used by the smoke-test path so
+    # a 2376-batch epoch doesn't have to run to completion to exercise the
+    # full train → val → ckpt → metrics → registry flow.
+    max_train_iters = int(tcfg.get("max_train_iters", 0))
+    max_val_iters = int(tcfg.get("max_val_iters", 0))
     device = tcfg.get("device", "cuda" if torch.cuda.is_available() else "cpu")
     if device == "cuda" and not torch.cuda.is_available():
         device = "cpu"
@@ -79,9 +84,15 @@ def train_from_cfg(cfg: Mapping[str, Any]) -> dict[str, Any]:
     rollout_steps = int(dcfg.get("rollout_steps", 1))
     infer_latent = bool(dcfg.get("infer_latent_variable", True))
     nan_ch = int(dcfg.get("nan_channel", 9))
+    include_partial = bool(dcfg.get("include_partial", False))
+    samples_cache_dir = dcfg.get("samples_cache_dir")
 
     split = resolve_split(ident.split, paths.data_root, seed=ident.seed)
-    datasets = build_datasets_for_split(split, input_steps, rollout_steps, infer_latent)
+    datasets = build_datasets_for_split(
+        split, input_steps, rollout_steps, infer_latent,
+        include_partial=include_partial,
+        samples_cache_dir=samples_cache_dir,
+    )
 
     train_ds = datasets.get("train")
     val_ds = datasets.get("val")
@@ -141,6 +152,7 @@ def train_from_cfg(cfg: Mapping[str, Any]) -> dict[str, Any]:
         model.train()
         train_loss = 0.0
 
+        n_train_iters = 0
         for batch in tqdm(train_loader, desc=f"[Train {ident.name}] Epoch {epoch}"):
             x = batch["input_states"].to(device, non_blocking=True)
             y = batch["target"].to(device, non_blocking=True)
@@ -153,25 +165,35 @@ def train_from_cfg(cfg: Mapping[str, Any]) -> dict[str, Any]:
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
-        train_loss /= max(1, len(train_loader))
+            n_train_iters += 1
+            if max_train_iters and n_train_iters >= max_train_iters:
+                break
+        train_loss /= max(1, n_train_iters)
 
         val_metrics: dict[str, float] = {}
         if val_loader is not None:
             model.eval()
             accum = {"mse": 0.0, "mae": 0.0, "rel_l2": 0.0}
             n = 0
+            is_hybrid = (ident.family == "hybrid")
             with torch.no_grad():
                 for batch in val_loader:
                     x = batch["input_states"].to(device, non_blocking=True)
                     y = batch["target"].to(device, non_blocking=True)
-                    pred = model(x)
+                    if is_hybrid:
+                        out = model.step(x)
+                        pred = out["latent_field"]
+                    else:
+                        pred = model(x)
                     if infer_latent:
                         pred = pred.squeeze(1)
                     mask = _mask_from_input(x, pred, infer_latent, nan_ch=nan_ch)
-                    m = summarize(pred, y, mask == 0)  # valid where mask==0 by convention
+                    m = summarize(pred, y, mask == 0)
                     for k, v in m.items():
                         accum[k] = accum.get(k, 0.0) + float(v)
                     n += 1
+                    if max_val_iters and n >= max_val_iters:
+                        break
             val_metrics = {k: v / max(1, n) for k, v in accum.items()}
 
         t1 = time.time()

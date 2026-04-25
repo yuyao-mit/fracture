@@ -53,9 +53,15 @@ def evaluate_from_cfg(
     rollout_steps = int(dcfg.get("rollout_steps", 1))
     infer_latent = bool(dcfg.get("infer_latent_variable", True))
     nan_ch = int(dcfg.get("nan_channel", 9))
+    include_partial = bool(dcfg.get("include_partial", False))
+    samples_cache_dir = dcfg.get("samples_cache_dir")
 
     split = resolve_split(ident.split, paths.data_root, seed=ident.seed)
-    datasets = build_datasets_for_split(split, input_steps, rollout_steps, infer_latent, roles=("test",))
+    datasets = build_datasets_for_split(
+        split, input_steps, rollout_steps, infer_latent,
+        roles=("test",), include_partial=include_partial,
+        samples_cache_dir=samples_cache_dir,
+    )
     test_ds = datasets.get("test")
     if test_ds is None or len(test_ds) == 0:
         raise RuntimeError(f"no test split resolved for {ident.name}")
@@ -100,15 +106,33 @@ def evaluate_from_cfg(
 
     accum = {"mse": 0.0, "mae": 0.0, "rel_l2": 0.0}
     n = 0
-    preds_out, targets_out = [], []
+    # `preds_out` stores the backbone's predicted parameter field (same space
+    # as the dataset supervision target `latent_variables`, e.g. Gc). For
+    # hybrid runs where FEM actually ran, `d_out` stores the FEM-solved damage
+    # field per batch. To keep row alignment with `predictions.npy` we only
+    # save `fem_damage.npy` when *every* batch produced a `d`. Partial fallback
+    # (some batches missing d) skips the save with a warning.
+    preds_out, targets_out, d_out = [], [], []
+    n_batches_with_d = 0
+    is_hybrid = (ident.family == "hybrid")
     with torch.no_grad():
         for batch in tqdm(loader, desc=f"[Eval {ident.name}]"):
             x = batch["input_states"].to(device, non_blocking=True)
             y = batch["target"].to(device, non_blocking=True)
-            pred = model(x)
+            # Hybrid: invoke step() so FEM (when ready) actually runs and the
+            # any_true_fem_used flag is flipped. Baseline: plain forward.
+            if is_hybrid:
+                out = model.step(x)
+                pred = out["latent_field"]
+            else:
+                pred = model(x)
+                out = None
             if infer_latent:
                 pred = pred.squeeze(1)
             mask = _mask_from_input(x, pred, infer_latent, nan_ch=nan_ch)
+            # Scoring is against the supervision target `y`, which is the
+            # parameter field the backbone predicts. Paper-eligible hybrid
+            # runs should add damage metrics over `d` in a follow-up.
             m = summarize(pred, y, mask == 0)
             for k, v in m.items():
                 accum[k] = accum.get(k, 0.0) + float(v)
@@ -116,6 +140,9 @@ def evaluate_from_cfg(
             if save_predictions:
                 preds_out.append(pred.cpu().numpy())
                 targets_out.append(y.cpu().numpy())
+                if is_hybrid and out is not None and out.get("d") is not None:
+                    d_out.append(out["d"].cpu().numpy())
+                    n_batches_with_d += 1
 
     test_metrics = {k: v / max(1, n) for k, v in accum.items()}
 
@@ -142,6 +169,16 @@ def evaluate_from_cfg(
         t = np.concatenate(targets_out, axis=0)
         np.save(pred_dir / "predictions.npy", p)
         np.save(pred_dir / "targets.npy", t)
+        if d_out:
+            if n_batches_with_d == n:
+                np.save(pred_dir / "fem_damage.npy", np.concatenate(d_out, axis=0))
+            else:
+                print(
+                    f"[eval] skipped fem_damage.npy: only {n_batches_with_d}/{n} "
+                    f"batches produced `d` (partial fallback). Row alignment with "
+                    f"predictions.npy would be broken.",
+                    flush=True,
+                )
 
     write_row({
         "run_name": ident.name,

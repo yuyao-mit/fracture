@@ -39,8 +39,6 @@ def test_fem_solve_unimplemented_until_phase3():
 
 @requires_torch
 def test_hybrid_refuses_to_build_when_fem_missing_and_no_fallback():
-    if not HAS_TORCH:
-        pytest.skip("torch unavailable")
     if is_fem_available() and is_fem_solve_implemented():
         pytest.skip("FEM fully available in this env; fail-fast path is not exercisable")
     from hybrid.paramfem import HybridPredictor
@@ -51,8 +49,6 @@ def test_hybrid_refuses_to_build_when_fem_missing_and_no_fallback():
 
 @requires_torch
 def test_hybrid_allow_fallback_builds_without_fem():
-    if not HAS_TORCH:
-        pytest.skip("torch unavailable")
     if is_fem_available() and is_fem_solve_implemented():
         pytest.skip("FEM fully available; fallback gate is not exercisable")
     from hybrid.paramfem import HybridPredictor
