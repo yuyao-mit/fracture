@@ -39,7 +39,10 @@ case "$ENV_MODE" in
     # is full). The neuraloperator vendored package is on sys.path by script.
     MODULE_PY="/opt/packages/AI/pytorch_23.02-1.13.1-py3/bin/python"
     OCEAN_LIBS="/ocean/projects/mch250029p/yyao6/pylibs_pt1131"
-    REPO_ROOT_EARLY="$(cd "$(dirname "$0")/.." && pwd)"
+    # Under SLURM, $0 is the spooled script copy at /var/spool/slurm/d/...,
+    # so dirname-of-$0 doesn't point at the repo. Trust SLURM_SUBMIT_DIR
+    # (set to the cwd at sbatch time) and fall back to dirname for local runs.
+    REPO_ROOT_EARLY="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
     NEURALOP_PATH="$REPO_ROOT_EARLY/src/models/neuraloperator"
     export PYTHONPATH="${OCEAN_LIBS}:${NEURALOP_PATH}:${PYTHONPATH:-}"
     PY="$MODULE_PY"
@@ -55,7 +58,7 @@ case "$ENV_MODE" in
     ;;
 esac
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_ROOT="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$REPO_ROOT"
 
 echo "============================================================"

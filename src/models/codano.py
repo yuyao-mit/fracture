@@ -54,10 +54,9 @@ class CODANO(nn.Module):
             horizontal_skips_map={5: 0, 4: 1, 3: 2},
             use_positional_encoding=True,
             positional_encoding_dim=2,
-            positional_encoding_modes=None,
+            positional_encoding_modes=[16, 16],
             static_channel_dim=0,
             domain_padding=0.1,
-            domain_padding_mode="one-sided",
             layer_kwargs={},
             enable_cls_token=False
         )

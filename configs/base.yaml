@@ -29,5 +29,5 @@ eval:
 wandb:
   enabled: true
   project: fracture
-  mode: null                # null | online | offline | disabled
+  mode: offline             # PSC compute nodes can't reach api.wandb.ai; sync logs after the run with `wandb sync`
   tags: []
