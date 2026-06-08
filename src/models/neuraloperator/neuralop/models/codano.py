@@ -548,7 +548,16 @@ class CODANO(nn.Module):
             else:
                 cur_output_shape = None
 
-            x = self.attention_layers[layer_idx](x, output_shape=cur_output_shape)
+            # Optional gradient checkpointing: each CoDA layer stacks Key/Query/Value +
+            # mixer FNOBlocks whose FFT/channel-MLP activations are otherwise all kept for
+            # backward (~2.8 GB/layer at 64^2, scaling ~linearly with pixels -> >>80 GB at
+            # 256^2). Recomputing each layer in backward trades compute for a ~Nx memory cut.
+            if getattr(self, "use_gradient_checkpointing", False) and self.training:
+                from torch.utils.checkpoint import checkpoint as _ckpt
+                x = _ckpt(self.attention_layers[layer_idx], x,
+                          output_shape=cur_output_shape, use_reentrant=False)
+            else:
+                x = self.attention_layers[layer_idx](x, output_shape=cur_output_shape)
 
             # storing the outputs for skip connections
             if (

@@ -1,14 +1,15 @@
 """Run registry: append one row per run to metadata/runs/<benchmark_group>.csv.
 
-Uses fcntl.flock for the read-modify-write so concurrent SLURM jobs finishing
-against the same benchmark group don't corrupt the CSV.
+Uses an O_CREAT|O_EXCL lock file for the read-modify-write so concurrent SLURM jobs
+finishing against the same benchmark group don't corrupt the CSV. (fcntl.flock is not
+portable here: it raises ENOTSUPP/errno 524 on NERSC global-homes GPFS.)
 """
 from __future__ import annotations
 
 import csv
-import fcntl
 import json
 import os
+import time
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -73,23 +74,42 @@ def write_row(
     run_name = row["run_name"]
     payload = {k: row.get(k, "") for k in FIELDS}
 
-    with open(lock_path, "w") as lock_fh:
-        fcntl.flock(lock_fh, fcntl.LOCK_EX)
+    # Portable advisory lock via O_CREAT|O_EXCL (fcntl.flock raises ENOTSUPP/errno 524
+    # on GPFS). Best-effort: if the lock can't be acquired we still proceed — the
+    # per-pid tmp file + atomic os.replace keeps each individual write self-consistent.
+    got_lock = False
+    deadline = time.time() + 30.0
+    while True:
         try:
-            rows: list[dict[str, Any]] = []
-            if csv_path.exists():
-                with open(csv_path, newline="") as f:
-                    rows = list(csv.DictReader(f))
-            out = [{**r} for r in rows if r.get("run_name") != run_name]
-            out.append(payload)
-            tmp_path = csv_path.with_suffix(csv_path.suffix + ".tmp")
-            with open(tmp_path, "w", newline="") as f:
-                w = csv.DictWriter(f, fieldnames=FIELDS)
-                w.writeheader()
-                w.writerows(out)
-            os.replace(tmp_path, csv_path)
-        finally:
-            fcntl.flock(lock_fh, fcntl.LOCK_UN)
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+            os.close(fd)
+            got_lock = True
+            break
+        except FileExistsError:
+            if time.time() > deadline:
+                break  # stale/contended lock; proceed best-effort
+            time.sleep(0.2)
+        except OSError:
+            break  # filesystem doesn't support O_EXCL here either; proceed best-effort
+    try:
+        rows: list[dict[str, Any]] = []
+        if csv_path.exists():
+            with open(csv_path, newline="") as f:
+                rows = list(csv.DictReader(f))
+        out = [{**r} for r in rows if r.get("run_name") != run_name]
+        out.append(payload)
+        tmp_path = csv_path.with_suffix(csv_path.suffix + f".{os.getpid()}.tmp")
+        with open(tmp_path, "w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=FIELDS)
+            w.writeheader()
+            w.writerows(out)
+        os.replace(tmp_path, csv_path)
+    finally:
+        if got_lock:
+            try:
+                os.unlink(lock_path)
+            except OSError:
+                pass
     return csv_path
 
 

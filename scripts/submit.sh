@@ -1,54 +1,57 @@
 #!/bin/bash
 #SBATCH --job-name=fracture
-#SBATCH --partition=GPU-shared
+#SBATCH --constraint=gpu
+#SBATCH --qos=shared
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=1
-#SBATCH --gpus=v100-32:1
-#SBATCH --cpus-per-task=5
-#SBATCH --mem=60G
+#SBATCH --ntasks=1
+#SBATCH --gpus=1
+#SBATCH --cpus-per-task=32
 #SBATCH --time=24:00:00
-#SBATCH --account=mch250029p
+#SBATCH --account=m4891_g
 
-# Submit one config-driven run.
-# Required env: CONFIG (path to experiment yaml), RUN_NAME (for logs), RUN_LOG_DIR.
+# Submit one config-driven run on NERSC Perlmutter.
+#
+# Required env: CONFIG (path to experiment yaml), RUN_NAME (for logs).
 # Optional env:
+#   RUN_LOG_DIR             where to write logs (default: pscratch experiments/logs/$RUN_NAME)
+#   ENV_MODE                "conda" (default) | "module"
+#   CONDA_ENV               conda env name when ENV_MODE=conda (default phasefield-ml)
 #   OVERRIDES               space-separated dotted.key=value tokens (no spaces/metachars)
-#   ENV_MODE                "module" (default, uses PSC AI pytorch module) | "conda"
-#   CONDA_ENV               env name when ENV_MODE=conda (default ai4phasefield)
 #   PREFLIGHT_CUDA_STRICT   1 (default) | 0
 #
 # Usage (preferred): invoked by scripts/submit_batch.py which fills in
-#                    sbatch --output/--error and exports CONFIG/RUN_NAME/etc.
+#                    sbatch --account/--job-name/--output/--error (these override the
+#                    #SBATCH lines above) and exports CONFIG/RUN_NAME/RUN_LOG_DIR/CONDA_ENV.
+#
+# QOS notes (Perlmutter GPU): `shared` (1 GPU / 1-4 of a node, MaxWall 2 days) is the
+# default here so many screening runs pack onto few nodes. Override per submission with
+# sbatch --qos=regular / --time=... if a single run needs a full node or longer wall.
 
 set -euo pipefail
 
 : "${CONFIG:?CONFIG=<path> required}"
 : "${RUN_NAME:?RUN_NAME=<name> required}"
-RUN_LOG_DIR="${RUN_LOG_DIR:-/ocean/projects/mch250029p/shared/experiments/fracture/logs/$RUN_NAME}"
-ENV_MODE="${ENV_MODE:-module}"
-CONDA_ENV="${CONDA_ENV:-ai4phasefield}"
+RUN_LOG_DIR="${RUN_LOG_DIR:-/pscratch/sd/y/yu_yao/MyQuota/fracture_experiments/logs/$RUN_NAME}"
+ENV_MODE="${ENV_MODE:-conda}"
+CONDA_ENV="${CONDA_ENV:-phasefield-ml}"
 OVERRIDES="${OVERRIDES:-}"
 PREFLIGHT_CUDA_STRICT="${PREFLIGHT_CUDA_STRICT:-1}"
 
 mkdir -p "$RUN_LOG_DIR"
 
+# Under SLURM, $0 is the spooled script copy, so trust SLURM_SUBMIT_DIR (the cwd at
+# sbatch time) for the repo root and fall back to dirname-of-$0 for local runs.
+REPO_ROOT="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+
 case "$ENV_MODE" in
-  module)
-    # The 25.02 module's python is a broken symlink into another user's home on
-    # current PSC nodes. 23.02 works directly. Deps live on /ocean (HOME quota
-    # is full). The neuraloperator vendored package is on sys.path by script.
-    MODULE_PY="/opt/packages/AI/pytorch_23.02-1.13.1-py3/bin/python"
-    OCEAN_LIBS="/ocean/projects/mch250029p/yyao6/pylibs_pt1131"
-    # Under SLURM, $0 is the spooled script copy at /var/spool/slurm/d/...,
-    # so dirname-of-$0 doesn't point at the repo. Trust SLURM_SUBMIT_DIR
-    # (set to the cwd at sbatch time) and fall back to dirname for local runs.
-    REPO_ROOT_EARLY="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
-    NEURALOP_PATH="$REPO_ROOT_EARLY/src/models/neuraloperator"
-    export PYTHONPATH="${OCEAN_LIBS}:${NEURALOP_PATH}:${PYTHONPATH:-}"
-    PY="$MODULE_PY"
-    ;;
   conda)
-    source /jet/home/yyao6/miniconda3/etc/profile.d/conda.sh
+    # NERSC central Miniforge; the phasefield-ml env provides torch 2.10 + neuralop deps.
+    source /global/common/software/nersc/pe/conda/24.10.0/Miniforge3-24.7.1-0/etc/profile.d/conda.sh
+    conda activate "$CONDA_ENV"
+    PY="$(which python)"
+    ;;
+  module)
+    module load conda
     conda activate "$CONDA_ENV"
     PY="$(which python)"
     ;;
@@ -58,8 +61,13 @@ case "$ENV_MODE" in
     ;;
 esac
 
-REPO_ROOT="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$REPO_ROOT"
+
+# wandb-core's IPC port-file handshake times out on Lustre (an inherited $TMPDIR may
+# point at pscratch); use fast node-local /tmp for transient service files instead.
+export TMPDIR="/tmp/frac_${SLURM_JOB_ID:-$$}"
+mkdir -p "$TMPDIR"
+export WANDB__SERVICE_WAIT="${WANDB__SERVICE_WAIT:-120}"
 
 echo "============================================================"
 echo "  run      : $RUN_NAME"
@@ -67,9 +75,9 @@ echo "  config   : $CONFIG"
 echo "  overrides: $OVERRIDES"
 echo "  log dir  : $RUN_LOG_DIR"
 echo "  slurm job: ${SLURM_JOB_ID:-<local>}  on ${SLURMD_NODENAME:-$(hostname)}"
-echo "  env mode : $ENV_MODE"
+echo "  env mode : $ENV_MODE ($CONDA_ENV)"
 echo "  python   : $PY  $($PY -V 2>&1)"
-echo "  gpu      : $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null || echo N/A)"
+echo "  gpu      : $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || echo N/A)"
 echo "============================================================"
 
 STRICT_FLAG=""

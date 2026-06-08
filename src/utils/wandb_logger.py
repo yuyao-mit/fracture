@@ -24,22 +24,31 @@ class WandbLogger:
         if not self.enabled:
             return
 
-        import wandb  # lazy import
+        try:
+            import wandb  # lazy import
 
-        if dir_ is not None:
-            os.makedirs(dir_, exist_ok=True)
+            if dir_ is not None:
+                os.makedirs(dir_, exist_ok=True)
 
-        kwargs: dict[str, Any] = {"project": project, "name": run_name, "config": dict(config or {})}
-        if mode is not None:
-            kwargs["mode"] = mode
-        if tags:
-            kwargs["tags"] = list(tags)
-        if group:
-            kwargs["group"] = group
-        if dir_:
-            kwargs["dir"] = dir_
-        self._run = wandb.init(**kwargs)
-        self._wandb = wandb
+            kwargs: dict[str, Any] = {"project": project, "name": run_name, "config": dict(config or {})}
+            if mode is not None:
+                kwargs["mode"] = mode
+            if tags:
+                kwargs["tags"] = list(tags)
+            if group:
+                kwargs["group"] = group
+            if dir_:
+                kwargs["dir"] = dir_
+            self._run = wandb.init(**kwargs)
+            self._wandb = wandb
+        except Exception as e:
+            # Never let a logging-service hiccup (e.g. wandb-core IPC timeout on a
+            # compute node) kill a training run. metrics.json and the run registry
+            # are written independently of wandb, so degrade to a no-op logger.
+            print(f"[wandb] init failed ({type(e).__name__}: {e}); "
+                  f"continuing WITHOUT wandb logging", flush=True)
+            self.enabled = False
+            self._run = None
 
     def log(self, data: Mapping[str, Any], step: int | None = None) -> None:
         if not self.enabled:

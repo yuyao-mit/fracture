@@ -244,7 +244,7 @@ def train_from_cfg(cfg: Mapping[str, Any]) -> dict[str, Any]:
     wb.summary(final_metrics)
     wb.summary({"true_fem_used": true_fem_used, "paper_eligible": paper_eligible})
 
-    write_row({
+    registry_row = {
         "run_name": ident.name,
         "model_id": ident.model_id,
         "seed": ident.seed,
@@ -257,7 +257,12 @@ def train_from_cfg(cfg: Mapping[str, Any]) -> dict[str, Any]:
         "primary_score": f"{best_val:.6e}",
         "true_fem_used": str(true_fem_used).lower(),
         "paper_eligible": str(paper_eligible).lower(),
-    })
+    }
+    try:
+        write_row(registry_row)
+    except Exception as e:  # never fail a completed run on a registry write
+        print(f"[registry] write_row failed ({type(e).__name__}: {e}); "
+              f"metrics.json at {metric_dir / 'metrics.json'} is the source of truth", flush=True)
 
     wb.finish()
     return {"best_val_mse": best_val, "run_name": ident.name,
